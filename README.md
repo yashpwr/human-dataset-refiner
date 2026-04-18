@@ -1,4 +1,4 @@
-# Human Dataset Refiner v2.0.0
+# Human Dataset Refiner
 
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.109+-green.svg)](https://fastapi.tiangolo.com/)
@@ -10,7 +10,7 @@
 
 ## 🚀 Core Architecture: Datasets & Jobs
 
-The Refiner v2.0.0 utilizes a decoupled architecture to separate source data from processing runs.
+The Refiner utilizes a decoupled architecture to separate source data from processing runs.
 
 - **Datasets**: Independent collections of raw images. Manage your "library" of source content without worrying about specific refinement parameters. Supports batch image uploads and ZIP file ingestion.
 - **Jobs**: Specific refinement pipelines. Link a dataset to a job, configure your thresholds, and run the cleaning process. Jobs maintain their own unique results, metadata, and identity groupings.
