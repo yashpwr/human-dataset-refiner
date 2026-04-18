@@ -125,10 +125,8 @@ def find_duplicates(
         keeper = ranked[0]
         for dup_name in ranked[1:]:
             removed_names.add(dup_name)
-            dup_path = path_map[dup_name]
-            copy_image(dup_path, settings.REMOVED_DIR)
             logger.info(
-                "Duplicate removed: %s  (kept: %s, hamming=%d)",
+                "Duplicate detected: %s (keeping: %s, hamming=%d)",
                 dup_name,
                 keeper,
                 hashes[dup_name] - hashes[keeper],
@@ -136,7 +134,7 @@ def find_duplicates(
 
     kept = [p for p in image_paths if p.name not in removed_names]
     removed = [
-        (path_map[n], f"near_duplicate_of:{_find_keeper(n, dup_groups, removed_names)}")
+        (path_map[n], f"duplicate_{_find_keeper(n, dup_groups, removed_names)}")
         for n in removed_names
     ]
 
