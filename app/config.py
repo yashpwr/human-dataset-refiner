@@ -23,10 +23,6 @@ class Settings(BaseSettings):
         default=Path("/app/data"),
         description="Root data directory (mounted volume in Docker).",
     )
-    MODELS_ROOT: Path = Field(
-        default=Path("/models"),
-        description="Directory for pre-downloaded models (baked into image).",
-    )
 
     # ── Quality thresholds ──────────────────────────────────────────────
     BLUR_THRESHOLD: float = Field(
@@ -102,10 +98,7 @@ class Settings(BaseSettings):
 
     @property
     def MODELS_DIR(self) -> Path:
-        # If /models exists (baked into image), use it. Otherwise fallback to data/models
-        if self.MODELS_ROOT.exists():
-            return self.MODELS_ROOT
-        return self.DATA_DIR / "models"
+        return self.DATA_DIR.parent / "models"
 
     @property
     def DB_PATH(self) -> Path:

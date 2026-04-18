@@ -28,7 +28,7 @@ desktop.ini
 # ── Data (runtime, not tracked) ────────────────────────
 data/jobs/*
 data/datasets/*
-data/models/*
+models/*
 data/*.db
 data/*.db-wal
 data/*.db-shm

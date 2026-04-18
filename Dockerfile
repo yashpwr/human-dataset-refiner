@@ -31,26 +31,25 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# ── Copy application code and scripts ──────────────────────────────────
+# ── Pre-download models (Baking) ────────────────────────────────────────
+# We do this during build so the container is ready instantly.
+COPY app/config.py ./app/
+COPY app/__init__.py ./app/
+COPY scripts/download_models.py ./scripts/
+RUN mkdir -p /models_baked && REFINER_MODELS_ROOT=/models_baked python scripts/download_models.py
+
+# ── Copy entrypoint script ──────────────────────────────────────────────
+COPY scripts/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+
+# ── Copy application code ───────────────────────────────────────────────
 COPY app/ ./app/
 COPY scripts/ ./scripts/
 
-# ── Set model cache environments (baked into image) ─────────────────────
-ENV HF_HOME=/models/huggingface
-ENV INSIGHTFACE_HOME=/models/insightface
-
-# ── Pre-download models ─────────────────────────────────────────────────
-RUN mkdir -p /models && python scripts/download_models.py
-
 # ── Create data directories ─────────────────────────────────────────────
-RUN mkdir -p data/jobs data/datasets data/models
+RUN mkdir -p data/jobs data/datasets models
 
-# ── Expose API port ─────────────────────────────────────────────────────
-EXPOSE 8000
+ENTRYPOINT ["/entrypoint.sh"]
 
-# ── Health check ────────────────────────────────────────────────────────
-HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# ── Run ─────────────────────────────────────────────────────────────────
+# ── Run (passed as args to entrypoint) ──────────────────────────────────
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]

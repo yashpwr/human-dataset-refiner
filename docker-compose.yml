@@ -17,6 +17,7 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/app/data
+      - ./models:/app/models
     environment:
       - REFINER_BLUR_THRESHOLD=35.0
       - REFINER_MIN_RESOLUTION=64
@@ -28,7 +29,6 @@ services:
       - REFINER_CLIP_PRETRAINED=laion2b_s34b_b79k
       - REFINER_INSIGHTFACE_MODEL=buffalo_l
       - REFINER_DATA_DIR=/app/data
-      - REFINER_MODELS_ROOT=/models
     restart: unless-stopped
 
   # Dev UI — Vite hot reload (default)
@@ -74,6 +74,7 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/app/data
+      - ./models:/app/models
     environment:
       - REFINER_BLUR_THRESHOLD=35.0
       - REFINER_MIN_RESOLUTION=64
@@ -85,7 +86,6 @@ services:
       - REFINER_CLIP_PRETRAINED=laion2b_s34b_b79k
       - REFINER_INSIGHTFACE_MODEL=buffalo_l
       - REFINER_DATA_DIR=/app/data
-      - REFINER_MODELS_ROOT=/models
     restart: unless-stopped
     deploy:
       resources:

@@ -59,10 +59,12 @@ def run_pipeline(job_id: int, job_name: str, dataset_name: str) -> None:
     input_dir = settings.DATASETS_DIR / dataset_name
     grouped_dir = job_dir / "grouped"
     removed_dir = job_dir / "removed"
+    embeddings_dir = job_dir / "embeddings"
+    metadata_dir = job_dir / "metadata"
 
     # Ensure output dirs exist
-    grouped_dir.mkdir(parents=True, exist_ok=True)
-    removed_dir.mkdir(parents=True, exist_ok=True)
+    for d in (grouped_dir, removed_dir, embeddings_dir, metadata_dir):
+        d.mkdir(parents=True, exist_ok=True)
 
     def _update(step: str, progress: float) -> None:
         db.update_job(job_id, current_step=step, progress=progress)
@@ -132,11 +134,11 @@ def run_pipeline(job_id: int, job_name: str, dataset_name: str) -> None:
 
         # ── Step 4: Feature extraction ──────────────────────────────
         _update("Extracting CLIP embeddings", 40)
-        clip_emb, clip_fns = extract_clip_embeddings(accepted)
+        clip_emb, clip_fns = extract_clip_embeddings(accepted, embeddings_dir)
         _update("CLIP embeddings done", 55)
 
         _update("Extracting face embeddings", 58)
-        face_emb, face_fns, face_flags = extract_face_embeddings(accepted)
+        face_emb, face_fns, face_flags = extract_face_embeddings(accepted, embeddings_dir)
         _update("Face embeddings done", 70)
 
         # ── Step 5: Clustering ──────────────────────────────────────
