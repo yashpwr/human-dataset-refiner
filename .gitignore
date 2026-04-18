@@ -1,0 +1,49 @@
+# ── Python ──────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ───────────────────────────────
+venv/
+.venv/
+env/
+.env
+
+# ── IDE / Editor ───────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Data (runtime, not tracked) ────────────────────────
+data/jobs/*
+data/datasets/*
+data/models/*
+data/*.db
+data/*.db-wal
+data/*.db-shm
+!data/.gitkeep
+
+# ── Test artifacts ─────────────────────────────────────
+tests/test_dataset/
+tests/test_images.zip
+
+# ── Docker ─────────────────────────────────────────────
+*.log
+
+# ── Model caches (large, downloaded at runtime) ───────
+*.onnx
+*.safetensors
+*.bin
+*.pt
+*.pth
