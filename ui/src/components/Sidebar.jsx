@@ -1,11 +1,12 @@
+import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, Briefcase, Database, BarChart2, Activity, Sun, Moon } from 'lucide-react';
 
-export default function Sidebar({ currentView, setCurrentView, theme, toggleTheme }) {
+export default function Sidebar({ theme, toggleTheme }) {
   const items = [
-    { key: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { key: 'jobs',      icon: Briefcase,       label: 'Jobs' },
-    { key: 'datasets',  icon: Database,        label: 'Datasets' },
-    { key: 'report',    icon: BarChart2,       label: 'Pipeline Report' },
+    { to: '/',          icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/jobs',      icon: Briefcase,       label: 'Jobs' },
+    { to: '/datasets',  icon: Database,        label: 'Datasets' },
+    { to: '/report',    icon: BarChart2,       label: 'Pipeline Report' },
   ];
 
   return (
@@ -20,14 +21,14 @@ export default function Sidebar({ currentView, setCurrentView, theme, toggleThem
         </button>
       </div>
       <div className="nav-links">
-        {items.map(({ key, icon: Icon, label }) => (
-          <div
-            key={key}
-            className={`nav-item ${currentView === key ? 'active' : ''}`}
-            onClick={() => setCurrentView(key)}
+        {items.map(({ to, icon: Icon, label }) => (
+          <NavLink
+            key={to}
+            to={to}
+            className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
           >
             <Icon size={18} /> {label}
-          </div>
+          </NavLink>
         ))}
       </div>
     </aside>

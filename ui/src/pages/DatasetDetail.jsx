@@ -1,24 +1,47 @@
 import { useState, useEffect, useRef } from 'react';
+import { useParams } from 'react-router-dom';
 import { ArrowLeft, UploadCloud } from 'lucide-react';
 import ImageGrid from '../components/ImageGrid';
 import Modal from '../components/Modal';
-import { listDatasetImages, uploadToDataset, deleteDatasetImage, dataUrl } from '../api';
+import { getDataset, listDatasetImages, uploadToDataset, deleteDatasetImage, dataUrl } from '../api';
 
-export default function DatasetDetail({ dataset, navigate }) {
+export default function DatasetDetail({ navigate }) {
+  const { datasetId } = useParams();
+  const [dataset, setDataset] = useState(null);
   const [images, setImages] = useState([]);
   const [imageToDelete, setImageToDelete] = useState(null);
+  const [loading, setLoading] = useState(true);
   const fileInputRef = useRef(null);
 
+  useEffect(() => {
+    if (!datasetId) return;
+    const fetch = async () => {
+      try {
+        const data = await getDataset(datasetId);
+        setDataset(data);
+      } catch (err) {
+        console.error("Failed to load dataset:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetch();
+  }, [datasetId]);
+
   const fetchImages = async () => {
+    if (!datasetId) return;
     try {
-      const data = await listDatasetImages(dataset.id);
+      const data = await listDatasetImages(datasetId);
       setImages(data.images || []);
     } catch (err) {}
   };
 
   useEffect(() => {
     fetchImages();
-  }, [dataset.id]);
+  }, [datasetId]);
+
+  if (loading) return <div className="p-8 text-center">Loading dataset...</div>;
+  if (!dataset) return <div className="p-8 text-center text-red-500">Dataset not found</div>;
 
   const handleUpload = async (files) => {
     if (!files?.length) return;
@@ -41,7 +64,7 @@ export default function DatasetDetail({ dataset, navigate }) {
 
   return (
     <div className="animate-fade-in">
-      <button className="btn btn-secondary" onClick={() => navigate('datasets')} style={{ marginBottom: '1.5rem' }}>
+      <button className="btn btn-secondary" onClick={() => navigate('/datasets')} style={{ marginBottom: '1.5rem' }}>
         <ArrowLeft size={16} /> All Datasets
       </button>
       <div className="view-header">

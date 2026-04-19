@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     current_step  TEXT    DEFAULT '',
     error         TEXT,
     total_images  INTEGER DEFAULT 0,
+    config        TEXT,
     created_at    TEXT    DEFAULT (datetime('now')),
     completed_at  TEXT
 );
@@ -92,7 +93,14 @@ def init_db() -> None:
             conn.commit()
             logger.info("Migrated jobs table to include dataset_id.")
         except sqlite3.OperationalError:
-            # Column already exists
+            pass
+
+        # Migration: Add config to jobs if missing
+        try:
+            conn.execute("ALTER TABLE jobs ADD COLUMN config TEXT")
+            conn.commit()
+            logger.info("Migrated jobs table to include config.")
+        except sqlite3.OperationalError:
             pass
 
     logger.info("SQLite database initialised at %s", get_settings().DB_PATH)
@@ -100,16 +108,18 @@ def init_db() -> None:
 
 # ── Jobs CRUD ───────────────────────────────────────────────────────────
 
-def create_job(name: str) -> dict:
+def create_job(name: str, config: Optional[dict] = None) -> dict:
     """Insert a new job and create its folder structure. Returns the row."""
     settings = get_settings()
     job_dir = settings.JOBS_DIR / name
     for sub in ("grouped", "removed"):
         (job_dir / sub).mkdir(parents=True, exist_ok=True)
 
+    config_str = json.dumps(config) if config else None
+
     with _connect() as conn:
         cur = conn.execute(
-            "INSERT INTO jobs (name) VALUES (?)", (name,)
+            "INSERT INTO jobs (name, config) VALUES (?, ?)", (name, config_str)
         )
         conn.commit()
         return dict(conn.execute("SELECT * FROM jobs WHERE id=?", (cur.lastrowid,)).fetchone())
@@ -180,6 +190,11 @@ def update_job(job_id: int, **kwargs) -> None:
     """Update arbitrary columns on a job row."""
     if not kwargs:
         return
+    
+    # Serialise config if present
+    if "config" in kwargs and isinstance(kwargs["config"], dict):
+        kwargs["config"] = json.dumps(kwargs["config"])
+
     cols = ", ".join(f"{k}=?" for k in kwargs)
     vals = list(kwargs.values()) + [job_id]
     with _connect() as conn:

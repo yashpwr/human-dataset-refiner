@@ -10,13 +10,14 @@ from __future__ import annotations
 import logging
 import shutil
 from pathlib import Path
+from typing import Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app.config import get_settings
+from app.config import get_settings, JobConfig
 from app.ingestion import ingest_images, ingest_zip
 from app import db
 from app.pipeline import get_active_job_id, run_pipeline
@@ -63,6 +64,10 @@ async def startup():
 
 class CreateJobRequest(BaseModel):
     name: str
+    config: Optional[JobConfig] = None
+
+class UpdateJobConfigRequest(BaseModel):
+    config: JobConfig
 
 class RenameRequest(BaseModel):
     name: str
@@ -82,7 +87,11 @@ async def create_job(req: CreateJobRequest):
     existing = db.get_job_by_name(name)
     if existing:
         raise HTTPException(409, f"Job '{name}' already exists.")
-    job = db.create_job(name)
+    
+    # Defaults handled by JobConfig if req.config is None
+    config_dict = req.config.dict() if req.config else get_settings().get_default_job_config().dict()
+    
+    job = db.create_job(name, config=config_dict)
     return job
 
 
@@ -118,6 +127,14 @@ async def get_job(job_id: int):
     job = db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found.")
+    
+    # Deserialise config
+    if job.get("config"):
+        import json
+        job["config"] = json.loads(job["config"])
+    else:
+        job["config"] = get_settings().get_default_job_config().dict()
+
     settings = get_settings()
     if job.get("dataset_id"):
         ds = db.get_dataset(job["dataset_id"])
@@ -167,11 +184,28 @@ async def assign_dataset(job_id: int, req: AssignDatasetRequest):
     job = db.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job not found.")
+    if job["status"] == "running":
+        raise HTTPException(400, "Cannot change dataset while the pipeline is in progress.")
+    
     ds = db.get_dataset(req.dataset_id)
     if not ds:
         raise HTTPException(404, "Dataset not found.")
     db.update_job(job_id, dataset_id=req.dataset_id)
     return {"message": f"Dataset '{ds['name']}' assigned to job."}
+
+
+@app.put("/jobs/{job_id}/config", tags=["Jobs"])
+async def update_job_config(job_id: int, req: UpdateJobConfigRequest):
+    """Update a job's configuration before it starts."""
+    job = db.get_job(job_id)
+    if not job:
+        raise HTTPException(404, "Job not found.")
+    
+    if job["status"] == "running":
+        raise HTTPException(400, "Cannot update configuration while the pipeline is in progress.")
+        
+    db.update_job(job_id, config=req.config.dict())
+    return {"message": "Job configuration updated.", "config": req.config}
 
 
 @app.delete("/jobs/{job_id}", tags=["Jobs"])
@@ -268,6 +302,22 @@ async def list_datasets():
         else:
             ds["image_count"] = 0
     return datasets
+
+@app.get("/datasets/{dataset_id}", tags=["Datasets"])
+async def get_dataset(dataset_id: int):
+    ds = db.get_dataset(dataset_id)
+    if not ds:
+        raise HTTPException(404, "Dataset not found.")
+    settings = get_settings()
+    ds_dir = settings.DATASETS_DIR / ds["name"]
+    if ds_dir.exists():
+        ds["image_count"] = len([
+            f for f in ds_dir.iterdir()
+            if f.is_file() and not f.name.startswith(".")
+        ])
+    else:
+        ds["image_count"] = 0
+    return ds
 
 @app.get("/datasets/{dataset_id}/images", tags=["Datasets"])
 async def list_dataset_images(dataset_id: int):

@@ -73,7 +73,7 @@ export default function Dashboard({ navigate }) {
         <button className="btn" onClick={() => setIsPromptOpen(true)}>
           <Plus size={16} /> New Job
         </button>
-        <button className="btn btn-secondary" onClick={() => navigate('jobs')}>
+        <button className="btn btn-secondary" onClick={() => navigate('/jobs')}>
           View All Jobs
         </button>
       </div>

@@ -53,10 +53,11 @@ export function dataUrl(path) {
 }
 
 // ── Jobs ───────────────────────────────────────────────────────────────
-export const createJob = (name) => postJSON('/jobs', { name });
+export const createJob = (name, config = null) => postJSON('/jobs', { name, config });
 export const listJobs = () => fetchJSON('/jobs');
 export const getJob = (id) => fetchJSON(`/jobs/${id}`);
 export const renameJob = (id, newName) => putJSON(`/jobs/${id}/rename`, { name: newName });
+export const updateJobConfig = (id, config) => putJSON(`/jobs/${id}/config`, { config });
 export const deleteJob = (id) => deleteResource(`/jobs/${id}`);
 export const startJob = (id) => postJSON(`/jobs/${id}/start`);
 export const assignDataset = (jobId, datasetId) => putJSON(`/jobs/${jobId}/dataset`, { dataset_id: datasetId });
@@ -64,6 +65,7 @@ export const assignDataset = (jobId, datasetId) => putJSON(`/jobs/${jobId}/datas
 // ── Datasets ───────────────────────────────────────────────────────────
 export const createDataset = (name) => postJSON('/datasets', { name });
 export const listDatasets = () => fetchJSON('/datasets');
+export const getDataset = (id) => fetchJSON(`/datasets/${id}`);
 export const listDatasetImages = (id) => fetchJSON(`/datasets/${id}/images`);
 export const uploadToDataset = (id, files) => uploadFiles(`/datasets/${id}/upload`, files);
 export const renameDataset = (id, newName) => putJSON(`/datasets/${id}/rename`, { name: newName });

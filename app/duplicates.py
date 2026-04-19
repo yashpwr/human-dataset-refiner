@@ -1,12 +1,3 @@
-"""
-Duplicate detection module — perceptual hashing + Hamming distance.
-
-Uses 64-bit pHash (DCT-based) which is robust to minor resizing,
-compression, and colour shifts.  Groups of near-duplicates are found
-via pairwise Hamming distance; within each group the highest-quality
-image is kept and the rest are copied to ``data/removed/``.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -16,7 +7,7 @@ from typing import Optional
 import imagehash
 from PIL import Image
 
-from app.config import get_settings
+from app.config import get_settings, JobConfig
 from app.models import RemovalReason
 from app.utils import copy_image
 
@@ -53,8 +44,6 @@ def _build_dup_groups(
     Find connected components of near-duplicate images.
 
     Two images are linked when their Hamming distance ≤ *threshold*.
-    Connected components are returned so that transitive duplicates
-    are captured (A≈B, B≈C → {A, B, C}).
     """
     names = list(hashes.keys())
     parent: dict[str, str] = {n: n for n in names}
@@ -89,16 +78,10 @@ def _build_dup_groups(
 def find_duplicates(
     image_paths: list[Path],
     quality_scores: dict[str, float],
+    config: Optional[JobConfig] = None,
 ) -> tuple[list[Path], list[tuple[Path, str]]]:
     """
     Detect and remove near-duplicate images.
-
-    Parameters
-    ----------
-    image_paths : list[Path]
-        Images that passed quality filtering.
-    quality_scores : dict[str, float]
-        ``{filename: quality_score}`` from the quality step.
 
     Returns
     -------
@@ -108,10 +91,16 @@ def find_duplicates(
         ``(path, removal_reason_string)`` for removed duplicates.
     """
     settings = get_settings()
+    cfg = config or settings.get_default_job_config()
+    
+    if not cfg.enable_duplicate_check:
+        logger.info("Duplicate detection disabled by config.")
+        return image_paths, []
+
     path_map = {p.name: p for p in image_paths}
 
     hashes = compute_phashes(image_paths)
-    dup_groups = _build_dup_groups(hashes, settings.PHASH_THRESHOLD)
+    dup_groups = _build_dup_groups(hashes, cfg.phash_threshold)
 
     removed_names: set[str] = set()
 
@@ -143,6 +132,29 @@ def find_duplicates(
         len(kept), len(removed), len(dup_groups),
     )
     return kept, removed
+
+
+def _find_keeper(
+    removed_name: str,
+    groups: list[set[str]],
+    removed_names: set[str],
+) -> str:
+    """Find which image was kept in place of *removed_name*."""
+    for group in groups:
+        if removed_name in group:
+            for name in group:
+                if name not in removed_names:
+                    return name
+    return "unknown"
+
+
+def get_phash_string(image_path: Path) -> Optional[str]:
+    """Return the hex pHash of a single image, or None on failure."""
+    try:
+        img = Image.open(image_path).convert("RGB")
+        return str(imagehash.phash(img, hash_size=8))
+    except Exception:
+        return None
 
 
 def _find_keeper(

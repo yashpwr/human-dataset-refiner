@@ -16,6 +16,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
+      - ./app:/app/app
       - ./data:/app/data
       - ./models:/app/models
     environment:
@@ -30,6 +31,7 @@ services:
       - REFINER_INSIGHTFACE_MODEL=buffalo_l
       - REFINER_DATA_DIR=/app/data
     restart: unless-stopped
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
 
   # Dev UI — Vite hot reload (default)
   ui:
@@ -73,6 +75,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
+      - ./app:/app/app
       - ./data:/app/data
       - ./models:/app/models
     environment:

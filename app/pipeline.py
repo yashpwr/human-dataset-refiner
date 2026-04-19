@@ -1,21 +1,10 @@
-"""
-Pipeline orchestrator — ties ingestion, quality, dedup, features,
-clustering, and reporting into a single ``run_pipeline()`` function.
-
-Runs synchronously in a background **thread** so the event loop
-stays responsive for ``/status`` polling.
-
-v2: Job-scoped — each run targets a specific job folder.
-"""
-
-from __future__ import annotations
-
 import logging
 import traceback
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app.config import get_settings
+from app.config import get_settings, JobConfig
 from app.models import (
     ImageMetadata,
     PipelineState,
@@ -48,13 +37,29 @@ def get_active_job_id() -> int | None:
 def run_pipeline(job_id: int, job_name: str, dataset_name: str) -> None:
     """
     Execute the full cleaning pipeline for a specific job.
-
-    Runs **synchronously** in a background thread so the FastAPI
-    event loop is not blocked and ``/jobs/{id}`` remains responsive.
     """
     global _active_job_id
     _active_job_id = job_id
+    
     settings = get_settings()
+    
+    # ── Load Job Config ─────────────────────────────────────────────
+    job_record = db.get_job(job_id)
+    if not job_record:
+        logger.error("Job %d not found in DB.", job_id)
+        return
+
+    raw_config = job_record.get("config")
+    if raw_config:
+        try:
+            config = JobConfig(**json.loads(raw_config))
+            logger.info("Loaded custom config for job %d: %s", job_id, config.dict())
+        except Exception as e:
+            logger.warning("Failed to parse config for job %d, falling back: %s", job_id, e)
+            config = settings.get_default_job_config()
+    else:
+        config = settings.get_default_job_config()
+
     job_dir = settings.JOBS_DIR / job_name
     input_dir = settings.DATASETS_DIR / dataset_name
     grouped_dir = job_dir / "grouped"
@@ -75,7 +80,6 @@ def run_pipeline(job_id: int, job_name: str, dataset_name: str) -> None:
     try:
         # ── Step 0: Clean previous outputs ──────────────────────────
         _update("Preparing output directories", 2)
-        # Clear only this job's grouped/removed (not global)
         import shutil
         for d in (grouped_dir, removed_dir):
             if d.exists():
@@ -92,12 +96,12 @@ def run_pipeline(job_id: int, job_name: str, dataset_name: str) -> None:
 
         # ── Step 2: Quality filtering ───────────────────────────────
         _update("Assessing image quality", 10)
-        accepted, removed_quality = filter_batch(all_images)
+        accepted, removed_quality = filter_batch(all_images, config=config)
 
         quality_map: dict[str, float] = {}
         quality_results: dict[str, object] = {}
         for path in accepted:
-            qr = assess_quality(path)
+            qr = assess_quality(path, config=config)
             quality_map[path.name] = qr.quality_score
             quality_results[path.name] = qr
 
@@ -116,7 +120,7 @@ def run_pipeline(job_id: int, job_name: str, dataset_name: str) -> None:
 
         # ── Step 3: Duplicate detection ─────────────────────────────
         _update("Detecting duplicates", 25)
-        accepted, removed_dups = find_duplicates(accepted, quality_map)
+        accepted, removed_dups = find_duplicates(accepted, quality_map, config=config)
 
         for path, reason in removed_dups:
             reason_dir = removed_dir / reason
@@ -134,20 +138,19 @@ def run_pipeline(job_id: int, job_name: str, dataset_name: str) -> None:
 
         # ── Step 4: Feature extraction ──────────────────────────────
         _update("Extracting CLIP embeddings", 40)
-        clip_emb, clip_fns = extract_clip_embeddings(accepted, embeddings_dir)
+        clip_emb, clip_fns = extract_clip_embeddings(accepted, embeddings_dir, config=config)
         _update("CLIP embeddings done", 55)
 
         _update("Extracting face embeddings", 58)
-        face_emb, face_fns, face_flags = extract_face_embeddings(accepted, embeddings_dir)
+        face_emb, face_fns, face_flags = extract_face_embeddings(accepted, embeddings_dir, config=config)
         _update("Face embeddings done", 70)
 
         # ── Step 5: Clustering ──────────────────────────────────────
         _update("Clustering images", 72)
         assignments = cluster_images(
-            accepted, clip_emb, clip_fns, face_emb, face_fns,
+            accepted, clip_emb, clip_fns, face_emb, face_fns, config=config
         )
 
-        # Override organise_into_folders to use job-scoped grouped_dir
         from collections import defaultdict
         cluster_members: dict[int, list[str]] = defaultdict(list)
         for path in accepted:
@@ -195,7 +198,6 @@ def run_pipeline(job_id: int, job_name: str, dataset_name: str) -> None:
 
         # Save removed images to SQLite
         removed_records = []
-        # Quality removed
         for path, qr in removed_quality:
             removed_records.append({
                 "filename": path.name,
@@ -203,7 +205,6 @@ def run_pipeline(job_id: int, job_name: str, dataset_name: str) -> None:
                 "quality_score": qr.quality_score,
                 "blur_score": qr.blur_score,
             })
-        # Duplicate removed
         for path, reason in removed_dups:
             qr = quality_results.get(path.name)
             removed_records.append({
@@ -212,7 +213,6 @@ def run_pipeline(job_id: int, job_name: str, dataset_name: str) -> None:
                 "quality_score": qr.quality_score if qr else 0,
                 "blur_score": qr.blur_score if qr else 0,
             })
-        # Noise (no cluster)
         for fn in cluster_members.get(-1, []):
             qr = quality_results.get(fn)
             removed_records.append({
@@ -225,7 +225,6 @@ def run_pipeline(job_id: int, job_name: str, dataset_name: str) -> None:
 
         # ── Step 7: Generate legacy report files ────────────────────
         _update("Generating reports", 92)
-        # Build metadata for report file
         all_metadata: list[ImageMetadata] = []
         for path in accepted:
             fn = path.name
@@ -272,8 +271,7 @@ def run_pipeline(job_id: int, job_name: str, dataset_name: str) -> None:
                 )
             )
 
-        # Write report files into job folder
-        report = generate_report(all_metadata, dict(cluster_members), representatives, metadata_dir)
+        report = generate_report(all_metadata, dict(cluster_members), representatives, metadata_dir, config)
         _update("Pipeline complete", 100)
 
         db.update_job(

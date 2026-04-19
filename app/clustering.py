@@ -104,6 +104,7 @@ def cluster_images(
     clip_filenames: list[str],
     face_embeddings: np.ndarray | None,
     face_filenames: list[str],
+    config: Optional[JobConfig] = None,
 ) -> dict[str, int]:
     """
     Two-pass identity-first clustering.
@@ -112,6 +113,7 @@ def cluster_images(
     assigned clusters and -1 for unmatched images (noise / outliers).
     """
     settings = get_settings()
+    cfg = config or settings.get_default_job_config()
 
     assignments: dict[str, int] = {}
     next_cluster_id = 0
@@ -123,7 +125,7 @@ def cluster_images(
         local_assignments = _cluster_cosine(
             face_embeddings,
             face_filenames,
-            distance_threshold=settings.FACE_DISTANCE_THRESHOLD,
+            distance_threshold=cfg.face_distance_threshold,
             label="Face-identity",
         )
 
@@ -153,10 +155,12 @@ def cluster_images(
         unassigned_indices = [clip_idx[fn] for fn in unassigned_fns]
         unassigned_embeddings = clip_embeddings[unassigned_indices]
 
+        # Use system default for CLIP fallback as it's less commonly tuned
+        # but could be added to JobConfig later if needed.
         local_assignments = _cluster_cosine(
             unassigned_embeddings,
             unassigned_fns,
-            distance_threshold=settings.CLIP_DISTANCE_THRESHOLD,
+            distance_threshold=0.5, # Default fallback
             label="CLIP-visual",
         )
 

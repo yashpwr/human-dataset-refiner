@@ -122,7 +122,7 @@ export default function Datasets({ navigate, setSelectedDataset }) {
               icon="cluster"
               title={ds.name}
               subtitle={`${ds.image_count || 0} images · Created ${new Date(ds.created_at).toLocaleDateString()}`}
-              onClick={() => { setSelectedDataset(ds); navigate('dataset-detail'); }}
+              onClick={() => navigate(`/datasets/${ds.id}`)}
               onRename={() => { setDatasetToRename(ds); setRenameDatasetName(ds.name); }}
               onDelete={() => setDatasetToDelete(ds)}
             />

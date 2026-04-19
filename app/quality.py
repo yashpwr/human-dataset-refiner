@@ -1,22 +1,14 @@
-"""
-Quality assessment module — filters out blurry, low-res, corrupt,
-and suspiciously small images.
-
-Each image receives a composite **quality_score** (0–1) and a
-pass/fail verdict.  Failed images are copied to ``data/removed/``
-with the reason recorded.
-"""
-
 from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Optional
 
 import cv2
 import numpy as np
 from PIL import Image
 
-from app.config import get_settings
+from app.config import get_settings, JobConfig
 from app.models import QualityResult, RemovalReason
 from app.utils import load_image_cv2
 
@@ -44,13 +36,16 @@ def _check_corruption(path: Path) -> bool:
         return False
 
 
-def assess_quality(image_path: Path) -> QualityResult:
+def assess_quality(image_path: Path, config: Optional[JobConfig] = None) -> QualityResult:
     """
     Run all quality checks on a single image.
 
     Returns a ``QualityResult`` with the verdict and scores.
     """
     settings = get_settings()
+    # Fallback to system defaults if no job-specific config provided
+    cfg = config or settings.get_default_job_config()
+    
     filename = image_path.name
     file_size = image_path.stat().st_size
 
@@ -64,6 +59,17 @@ def assess_quality(image_path: Path) -> QualityResult:
             quality_score=0.0,
             is_acceptable=False,
             removal_reason=RemovalReason.CORRUPT,
+        )
+
+    # ── Quality Check Toggle ────────────────────────────────────────
+    if not cfg.enable_quality_check:
+        return QualityResult(
+            filename=filename,
+            blur_score=0.0,
+            resolution=(0, 0),
+            file_size_bytes=file_size,
+            quality_score=1.0,  # Neutral high score
+            is_acceptable=True,
         )
 
     # ── File-size check ─────────────────────────────────────────────
@@ -95,7 +101,7 @@ def assess_quality(image_path: Path) -> QualityResult:
     resolution = (w, h)
 
     # ── Resolution check ────────────────────────────────────────────
-    if w < settings.MIN_RESOLUTION or h < settings.MIN_RESOLUTION:
+    if w < cfg.min_resolution or h < cfg.min_resolution:
         return QualityResult(
             filename=filename,
             blur_score=0.0,
@@ -108,7 +114,7 @@ def assess_quality(image_path: Path) -> QualityResult:
 
     # ── Blur check ──────────────────────────────────────────────────
     blur = _blur_score(cv_img)
-    if blur < settings.BLUR_THRESHOLD:
+    if blur < cfg.blur_threshold:
         # Normalise blur score to 0–1 range (cap at 1000 for scaling).
         norm_blur = min(blur / 1000.0, 1.0)
         return QualityResult(
@@ -141,21 +147,19 @@ def assess_quality(image_path: Path) -> QualityResult:
 
 def filter_batch(
     image_paths: list[Path],
+    config: Optional[JobConfig] = None,
 ) -> tuple[list[Path], list[tuple[Path, QualityResult]]]:
     """
     Assess quality for a batch of images.
 
     Returns ``(accepted_paths, removed_list)`` where *removed_list*
-    contains ``(path, quality_result)`` pairs.  Removed images are
-    automatically **copied** (not moved) to ``data/removed/``.
+    contains ``(path, quality_result)`` pairs.
     """
-    settings = get_settings()
-
     accepted: list[Path] = []
     removed: list[tuple[Path, QualityResult]] = []
 
     for path in image_paths:
-        result = assess_quality(path)
+        result = assess_quality(path, config=config)
         if result.is_acceptable:
             accepted.append(path)
         else:

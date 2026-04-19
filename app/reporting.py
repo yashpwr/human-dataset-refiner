@@ -13,7 +13,7 @@ import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
-from app.config import get_settings
+from app.config import get_settings, JobConfig
 from app.models import ClusterInfo, ImageMetadata, ProcessingReport
 
 logger = logging.getLogger(__name__)
@@ -72,6 +72,7 @@ def generate_report(
     cluster_members: dict[int, list[str]],
     representatives: dict[int, str],
     metadata_dir: Path,
+    config: JobConfig,
 ) -> ProcessingReport:
     """
     Build the final ``ProcessingReport`` and write CSV + JSON files.
@@ -108,11 +109,12 @@ def generate_report(
         clusters=clusters,
         images=all_image_metadata,
         thresholds={
-            "blur_threshold": settings.BLUR_THRESHOLD,
-            "min_resolution": settings.MIN_RESOLUTION,
-            "phash_threshold": settings.PHASH_THRESHOLD,
-            "face_distance_threshold": settings.FACE_DISTANCE_THRESHOLD,
-            "clip_distance_threshold": settings.CLIP_DISTANCE_THRESHOLD,
+            "blur_threshold": config.blur_threshold,
+            "min_resolution": config.min_resolution,
+            "phash_threshold": config.phash_threshold,
+            "face_distance_threshold": config.face_distance_threshold,
+            "face_confidence": config.face_confidence,
+            "min_face_size": config.min_face_size,
             "clip_model": settings.CLIP_MODEL_NAME,
             "insightface_model": settings.INSIGHTFACE_MODEL,
         },

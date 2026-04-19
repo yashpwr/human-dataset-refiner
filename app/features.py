@@ -1,11 +1,3 @@
-"""
-Feature extraction module — CLIP visual embeddings + InsightFace face embeddings.
-
-Both models are loaded **lazily** (on first call) and cached as module-level
-singletons.  Embeddings are persisted to ``data/embeddings/`` so that
-reprocessing the same dataset is effectively free.
-"""
-
 from __future__ import annotations
 
 import json
@@ -18,7 +10,7 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
-from app.config import get_settings
+from app.config import get_settings, JobConfig
 
 logger = logging.getLogger(__name__)
 
@@ -100,9 +92,6 @@ def _load_cached_embeddings(
 ) -> Optional[tuple[np.ndarray, list[str]]]:
     """
     Try to load previously saved embeddings.
-
-    Returns ``(embeddings_array, filenames_list)`` if the cache
-    matches *expected_filenames*, else ``None``.
     """
     emb_path = embeddings_dir / f"{kind}_embeddings.npy"
     fn_path = embeddings_dir / f"{kind}_filenames.json"
@@ -134,12 +123,13 @@ def _save_embeddings(
 
 # ── CLIP embeddings ─────────────────────────────────────────────────────
 
-def extract_clip_embeddings(image_paths: list[Path], embeddings_dir: Path) -> tuple[np.ndarray, list[str]]:
+def extract_clip_embeddings(
+    image_paths: list[Path], 
+    embeddings_dir: Path,
+    config: Optional[JobConfig] = None
+) -> tuple[np.ndarray, list[str]]:
     """
     Extract L2-normalised CLIP embeddings for all images.
-
-    Returns ``(embeddings, filenames)`` where embeddings is of shape
-    ``(N, dim)`` and filenames is aligned to the same order.
     """
     filenames = [p.name for p in image_paths]
 
@@ -185,7 +175,6 @@ def extract_clip_embeddings(image_paths: list[Path], embeddings_dir: Path) -> tu
     embeddings = np.vstack(all_embeddings).astype(np.float32)
 
     _save_embeddings("clip", embeddings, valid_filenames, embeddings_dir)
-    logger.info("Extracted CLIP embeddings: shape %s", embeddings.shape)
     return embeddings, valid_filenames
 
 
@@ -194,24 +183,14 @@ def extract_clip_embeddings(image_paths: list[Path], embeddings_dir: Path) -> tu
 def extract_face_embeddings(
     image_paths: list[Path],
     embeddings_dir: Path,
+    config: Optional[JobConfig] = None,
 ) -> tuple[np.ndarray | None, list[str], dict[str, bool]]:
     """
     Extract ArcFace embeddings for detected faces.
-
-    For multi-face images, uses the **largest** bounding box (assumed
-    to be the primary subject).
-
-    Returns
-    -------
-    embeddings : np.ndarray | None
-        Shape ``(M, 512)`` for the M images with a detected face.
-        ``None`` if no faces were found at all.
-    filenames : list[str]
-        Filenames aligned with *embeddings* (only those with faces).
-    face_flags : dict[str, bool]
-        ``{filename: has_face}`` for every input image.
     """
     all_filenames = [p.name for p in image_paths]
+    settings = get_settings()
+    cfg = config or settings.get_default_job_config()
 
     # Try cache.
     cached = _load_cached_embeddings("face", all_filenames, embeddings_dir)
@@ -236,12 +215,20 @@ def extract_face_embeddings(
 
         faces = _insightface_app.get(img)
 
-        if not faces:
+        # Filter by confidence and size
+        valid_faces = [
+            f for f in faces 
+            if f.det_score >= cfg.face_confidence and
+               (f.bbox[2] - f.bbox[0]) >= cfg.min_face_size and
+               (f.bbox[3] - f.bbox[1]) >= cfg.min_face_size
+        ]
+
+        if not valid_faces:
             face_flags[path.name] = False
             continue
 
         # Pick the largest face by bounding-box area.
-        best = max(faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
+        best = max(valid_faces, key=lambda f: (f.bbox[2] - f.bbox[0]) * (f.bbox[3] - f.bbox[1]))
         embedding = best.normed_embedding  # already L2-normalised
 
         embeddings_list.append(embedding)
@@ -250,7 +237,6 @@ def extract_face_embeddings(
 
     if not embeddings_list:
         logger.info("No faces detected in any image.")
-        # Save empty cache so we don't retry.
         (embeddings_dir / "face_flags.json").write_text(json.dumps(face_flags, indent=2))
         return None, [], face_flags
 

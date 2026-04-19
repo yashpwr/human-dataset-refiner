@@ -53,6 +53,7 @@
   font-weight: 500;
   transition: all 0.2s;
   border: 1px solid transparent;
+  text-decoration: none;
 }
 
 .nav-item:hover {
